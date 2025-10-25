@@ -1,0 +1,113 @@
+<!-- templates/index.html -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Smart Health Assistant — Chat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="../static/style.css">
+</head>
+<body>
+  <div class="chat-container">
+    <header>
+      <h1>Smart Health Assistant</h1>
+      <p class="muted">Demo AI assistant — medical diagnosis ke liye certified nahi. (Disclaimer upar dikhai dega.)</p>
+    </header>
+
+    <main id="chat">
+      <!-- Permanent welcome message -->
+      <div class="message bot">
+        <div class="message-content">
+          Namaste! You can share your symptoms or ask a direct question.
+        </div>
+      </div>
+    </main>
+
+    <section class="panel">
+      <form id="chatForm">
+        <input id="messageInput" placeholder="Describe your problem (e.g., I have fever and headache since 2 days)..." autocomplete="off">
+        <button type="submit">Send</button>
+      </form>
+    </section>
+
+    <footer>
+      <small><strong>Disclaimer:</strong> This is a demo. For emergency or serious conditions consult certified medical personnel.</small>
+    </footer>
+  </div>
+
+  <script>
+    const chat = document.getElementById('chat');
+    const form = document.getElementById('chatForm');
+    const input = document.getElementById('messageInput');
+
+    // Add a new message
+    function addMessage(text, cls='user') {
+      const div = document.createElement('div');
+      div.className = 'message ' + cls;
+      const inner = document.createElement('div');
+      inner.className = 'message-content';
+      inner.innerHTML = text;
+      div.appendChild(inner);
+      chat.appendChild(div);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    // Send message to server
+    async function sendToServer(payload) {
+      const res = await fetch('/chat', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(payload)
+      });
+      return res.json();
+    }
+
+    // Handle form submit
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = input.value.trim();
+      const checked = Array.from(document.querySelectorAll('input[name="sym"]:checked')).map(c => c.value);
+
+      if (!msg && checked.length === 0) return;
+
+      // Show user message
+      let userText = msg || (checked.length ? 'Selected symptoms: ' + checked.join(', ') : '');
+      addMessage(userText, 'user');
+      input.value = '';
+
+      // Prepare payload
+      const payload = { message: msg, symptoms: checked.length ? checked : null };
+
+      // Show typing indicator
+      addMessage('Typing...', 'bot-temp');
+
+      const botResp = await sendToServer(payload);
+
+      // Remove typing indicator
+      const temp = document.querySelector('.bot-temp');
+      if (temp) temp.remove();
+
+      // Handle bot response
+      if (botResp.type === 'diagnosis') {
+        let html = `<strong>Detected Symptoms:</strong> ${botResp.selected_symptoms.join(', ')}<br/><br/>`;
+        html += `<strong>Top Suggestions:</strong><br/>`;
+        botResp.predictions.forEach((p,i) => {
+          html += `<div class="pred"><b>${i+1}. ${p.disease}</b> — ${(p.probability*100).toFixed(1)}%<br>`;
+          if (p.precautions && p.precautions.length) {
+            html += `<em>Precautions:</em><ul>`;
+            p.precautions.forEach(x => html += `<li>${x}</li>`);
+            html += `</ul>`;
+          }
+          html += `</div>`;
+        });
+        html += `<div class="advice"><em>${botResp.advice}</em></div>`;
+        addMessage(html, 'bot');
+      } else if (botResp.type === 'text') {
+        addMessage(botResp.reply, 'bot');
+      } else {
+        addMessage("Sorry, I don't understand. Please describe the symptoms clearly.", 'bot');
+      }
+    });
+  </script>
+</body>
+</html>
